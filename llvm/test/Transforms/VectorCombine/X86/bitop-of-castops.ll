@@ -544,3 +544,65 @@ define i16 @or_bitcast_v16i1_to_i16(<16 x i1> %a, <16 x i1> %b) {
   %or = or i16 %bc1, %bc2
   ret i16 %or
 }
+
+; Disjointness of the truncated values says nothing about the discarded bits.
+define <2 x i32> @or_disjoint_trunc_v2i64_to_v2i32(<2 x i64> %a, <2 x i64> %b) {
+; CHECK-LABEL: @or_disjoint_trunc_v2i64_to_v2i32(
+; CHECK-NEXT:    [[OR_INNER:%.*]] = or <2 x i64> [[A:%.*]], [[B:%.*]]
+; CHECK-NEXT:    [[OR:%.*]] = trunc <2 x i64> [[OR_INNER]] to <2 x i32>
+; CHECK-NEXT:    ret <2 x i32> [[OR]]
+;
+  %t1 = trunc <2 x i64> %a to <2 x i32>
+  %t2 = trunc <2 x i64> %b to <2 x i32>
+  %or = or disjoint <2 x i32> %t1, %t2
+  ret <2 x i32> %or
+}
+
+; A non-disjoint i16 lane must not poison the whole i32 lane it is part of.
+define <8 x i16> @or_disjoint_bitcast_v4i32_to_v8i16(<4 x i32> %a, <4 x i32> %b) {
+; CHECK-LABEL: @or_disjoint_bitcast_v4i32_to_v8i16(
+; CHECK-NEXT:    [[OR_INNER:%.*]] = or <4 x i32> [[A:%.*]], [[B:%.*]]
+; CHECK-NEXT:    [[OR:%.*]] = bitcast <4 x i32> [[OR_INNER]] to <8 x i16>
+; CHECK-NEXT:    ret <8 x i16> [[OR]]
+;
+  %bc1 = bitcast <4 x i32> %a to <8 x i16>
+  %bc2 = bitcast <4 x i32> %b to <8 x i16>
+  %or = or disjoint <8 x i16> %bc1, %bc2
+  ret <8 x i16> %or
+}
+
+; Extends keep the lanes and the set bits, so disjoint is still valid.
+define <4 x i32> @or_disjoint_zext_v4i16_to_v4i32(<4 x i16> %a, <4 x i16> %b) {
+; CHECK-LABEL: @or_disjoint_zext_v4i16_to_v4i32(
+; CHECK-NEXT:    [[OR_INNER:%.*]] = or disjoint <4 x i16> [[A:%.*]], [[B:%.*]]
+; CHECK-NEXT:    [[OR:%.*]] = zext <4 x i16> [[OR_INNER]] to <4 x i32>
+; CHECK-NEXT:    ret <4 x i32> [[OR]]
+;
+  %z1 = zext <4 x i16> %a to <4 x i32>
+  %z2 = zext <4 x i16> %b to <4 x i32>
+  %or = or disjoint <4 x i32> %z1, %z2
+  ret <4 x i32> %or
+}
+
+define <8 x i16> @or_disjoint_bitcast_v4i32_to_v8i16_constant(<4 x i32> %a) {
+; CHECK-LABEL: @or_disjoint_bitcast_v4i32_to_v8i16_constant(
+; CHECK-NEXT:    [[OR_INNER:%.*]] = or <4 x i32> [[A:%.*]], <i32 131073, i32 262147, i32 393221, i32 524295>
+; CHECK-NEXT:    [[OR:%.*]] = bitcast <4 x i32> [[OR_INNER]] to <8 x i16>
+; CHECK-NEXT:    ret <8 x i16> [[OR]]
+;
+  %bc1 = bitcast <4 x i32> %a to <8 x i16>
+  %or = or disjoint <8 x i16> %bc1, <i16 1, i16 2, i16 3, i16 4, i16 5, i16 6, i16 7, i16 8>
+  ret <8 x i16> %or
+}
+
+; The constant is zero extended, so it cannot overlap the discarded bits.
+define <4 x i16> @or_disjoint_trunc_v4i32_to_v4i16_constant(<4 x i32> %a) {
+; CHECK-LABEL: @or_disjoint_trunc_v4i32_to_v4i16_constant(
+; CHECK-NEXT:    [[OR_INNER:%.*]] = or disjoint <4 x i32> [[A:%.*]], <i32 1, i32 2, i32 3, i32 4>
+; CHECK-NEXT:    [[OR:%.*]] = trunc <4 x i32> [[OR_INNER]] to <4 x i16>
+; CHECK-NEXT:    ret <4 x i16> [[OR]]
+;
+  %t1 = trunc <4 x i32> %a to <4 x i16>
+  %or = or disjoint <4 x i16> %t1, <i16 1, i16 2, i16 3, i16 4>
+  ret <4 x i16> %or
+}

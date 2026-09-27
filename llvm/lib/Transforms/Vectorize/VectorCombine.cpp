@@ -962,8 +962,15 @@ bool VectorCombine::foldBitOpOfCastops(Instruction &I) {
   // Create the operation on the source type
   Value *NewOp = Builder.CreateBinOp(BinOp->getOpcode(), LHSSrc, RHSSrc,
                                      BinOp->getName() + ".inner");
-  if (auto *NewBinOp = dyn_cast<BinaryOperator>(NewOp))
+  if (auto *NewBinOp = dyn_cast<BinaryOperator>(NewOp)) {
     NewBinOp->copyIRFlags(BinOp);
+    // A trunc discards bits which may overlap even when the truncated values
+    // are disjoint, and a bitcast may split a lane into several narrower ones,
+    // spreading the poison of a non-disjoint lane further than before.
+    if (CastOpcode == Instruction::Trunc || CastOpcode == Instruction::BitCast)
+      if (auto *NewDisjoint = dyn_cast<PossiblyDisjointInst>(NewBinOp))
+        NewDisjoint->setIsDisjoint(false);
+  }
 
   Worklist.pushValue(NewOp);
 
@@ -1065,8 +1072,16 @@ bool VectorCombine::foldBitOpOfCastConstant(Instruction &I) {
   // Create the operation on the source type
   Value *NewOp = Builder.CreateBinOp((Instruction::BinaryOps)I.getOpcode(),
                                      LHSSrc, InvC, I.getName() + ".inner");
-  if (auto *NewBinOp = dyn_cast<BinaryOperator>(NewOp))
+  if (auto *NewBinOp = dyn_cast<BinaryOperator>(NewOp)) {
     NewBinOp->copyIRFlags(&I);
+    // A bitcast may split a lane into several narrower ones, spreading the
+    // poison of a non-disjoint lane further than before. Trunc is fine here
+    // because InvC is zero extended, so it stays disjoint from the discarded
+    // bits.
+    if (CastOpcode == Instruction::BitCast)
+      if (auto *NewDisjoint = dyn_cast<PossiblyDisjointInst>(NewBinOp))
+        NewDisjoint->setIsDisjoint(false);
+  }
 
   Worklist.pushValue(NewOp);
 
